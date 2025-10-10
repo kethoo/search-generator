@@ -1,7 +1,7 @@
 import streamlit as st
 import openai
 import json
-from utils.file_extractors import extract_text_from_file
+from file_extractors import extract_text_from_file
 
 # ---------- PAGE CONFIG ----------
 st.set_page_config(page_title="Multi-Platform Job Search Generator", layout="wide")
@@ -144,3 +144,4 @@ if st.button("🔍 Generate Platform-Specific Search Strings"):
                 st.header("🌱 DevelopmentAid Search Strings")
                 for key, value in analysis["developmentaidSearches"].items():
                     st.text_area(f"DevelopmentAid - {key.capitalize()}", value, height=100)
+
