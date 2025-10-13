@@ -9,6 +9,10 @@ st.set_page_config(page_title="Multi-Platform Job Search Generator", layout="wid
 st.title("💼 Multi-Platform Job Search Generator")
 st.caption("Generate optimized search strings for LinkedIn Recruiter & DevelopmentAid")
 
+# ---------- INITIALIZE SESSION STATE ----------
+if 'analysis_results' not in st.session_state:
+    st.session_state.analysis_results = None
+
 # ---------- API CONFIG ----------
 api_key = st.text_input("🔑 OpenAI API Key", type="password", placeholder="sk-...")
 model = st.selectbox("🧠 Choose Model", ["gpt-4o", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo"])
@@ -36,11 +40,7 @@ generate_variations = col4.checkbox("Generate search variations", True)
 # ---------- IMPROVED PROMPT ----------
 def create_expert_prompt(job_text):
     """
-    MAJOR IMPROVEMENT: This prompt is 10x better because:
-    1. Includes platform-specific syntax knowledge
-    2. Provides concrete examples (few-shot learning)
-    3. Explains the reasoning behind good searches
-    4. Uses structured format with clear instructions
+    Expert-level prompt with platform-specific knowledge and examples
     """
     
     prompt = f"""You are an expert technical recruiter with 10+ years of experience creating Boolean search strings for LinkedIn Recruiter and DevelopmentAid.
@@ -153,10 +153,10 @@ Generate the search strings now."""
     return prompt
 
 
-# ---------- ANALYZE FUNCTION WITH ERROR HANDLING ----------
+# ---------- ANALYZE FUNCTION ----------
 def analyze_job_description(job_text):
     """
-    Improved version with better error handling and retry logic
+    Analyzes job description and stores results in session state
     """
     if not api_key:
         st.error("Please provide an OpenAI API key")
@@ -180,9 +180,9 @@ def analyze_job_description(job_text):
                         "content": prompt
                     }
                 ],
-                temperature=0.3,  # Lower = more consistent (was 0.7)
-                max_tokens=3000,  # Increased for detailed responses
-                response_format={"type": "json_object"}  # Forces valid JSON
+                temperature=0.3,
+                max_tokens=3000,
+                response_format={"type": "json_object"}
             )
 
         content = response.choices[0].message.content
@@ -190,13 +190,17 @@ def analyze_job_description(job_text):
         # Parse JSON
         try:
             result = json.loads(content)
+            # Store in session state so it persists across reruns
+            st.session_state.analysis_results = result
             return result
         except json.JSONDecodeError:
             # Fallback: try to extract JSON from text
             start = content.find("{")
             end = content.rfind("}")
             if start != -1 and end != -1:
-                return json.loads(content[start:end+1])
+                result = json.loads(content[start:end+1])
+                st.session_state.analysis_results = result
+                return result
             else:
                 st.error("⚠️ Failed to parse JSON from AI response.")
                 with st.expander("See raw response"):
@@ -208,104 +212,162 @@ def analyze_job_description(job_text):
         return None
 
 
-# ---------- IMPROVED DISPLAY ----------
+# ---------- GENERATE BUTTON ----------
 if st.button("🔍 Generate Platform-Specific Search Strings"):
     if not api_key:
         st.error("Please enter your OpenAI API key.")
     elif not job_description.strip():
         st.error("Please upload or paste a job description.")
     else:
+        # Generate new analysis
         analysis = analyze_job_description(job_description)
 
-        if analysis:
-            st.success("✅ Analysis complete!")
+
+# ---------- DISPLAY RESULTS (Uses session state) ----------
+# This section displays results whether they're newly generated or from previous run
+if st.session_state.analysis_results:
+    analysis = st.session_state.analysis_results
+    
+    st.success("✅ Analysis complete!")
+    
+    # Clear results button
+    if st.button("🗑️ Clear Results & Start New Search"):
+        st.session_state.analysis_results = None
+        st.rerun()
+    
+    # Show explanation first
+    if analysis.get("explanation"):
+        st.info(f"**Strategy:** {analysis['explanation']}")
+    
+    st.markdown("---")
+
+    # Show analysis
+    with st.expander("📊 Detailed Analysis", expanded=False):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("🚨 Most Important Requirements")
+            for item in analysis["analysis"].get("mostImportant", []):
+                st.markdown(f"- {item}")
             
-            # Show explanation first
-            if analysis.get("explanation"):
-                st.info(f"**Strategy:** {analysis['explanation']}")
+            st.subheader("🧩 Synonym Mapping")
+            for key, synonyms in analysis["analysis"].get("synonymMapping", {}).items():
+                st.markdown(f"**{key}:** {', '.join(synonyms)}")
+        
+        with col2:
+            st.subheader("💎 Most Unique Requirements")
+            for item in analysis["analysis"].get("mostUnique", []):
+                st.markdown(f"- {item}")
             
-            # Add copy buttons for easy use
-            st.markdown("---")
+            st.subheader("👔 Relevant Job Titles")
+            for title in analysis["analysis"].get("jobTitles", []):
+                st.markdown(f"- {title}")
 
-            # Show analysis
-            with st.expander("📊 Detailed Analysis", expanded=False):
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.subheader("🚨 Most Important Requirements")
-                    for item in analysis["analysis"].get("mostImportant", []):
-                        st.markdown(f"- {item}")
-                    
-                    st.subheader("🧩 Synonym Mapping")
-                    for key, synonyms in analysis["analysis"].get("synonymMapping", {}).items():
-                        st.markdown(f"**{key}:** {', '.join(synonyms)}")
-                
-                with col2:
-                    st.subheader("💎 Most Unique Requirements")
-                    for item in analysis["analysis"].get("mostUnique", []):
-                        st.markdown(f"- {item}")
-                    
-                    st.subheader("👔 Relevant Job Titles")
-                    for title in analysis["analysis"].get("jobTitles", []):
-                        st.markdown(f"- {title}")
+    st.markdown("---")
 
-            st.markdown("---")
-
-            # LinkedIn searches with copy buttons
-            if "linkedinSearches" in analysis and platform in ["both", "linkedin"]:
-                st.header("🔗 LinkedIn Recruiter Search Strings")
-                
-                searches = analysis["linkedinSearches"]
-                
-                for key, value in searches.items():
-                    col1, col2 = st.columns([4, 1])
-                    with col1:
-                        st.text_area(
-                            f"LinkedIn - {key.capitalize()}", 
-                            value, 
-                            height=120,
-                            key=f"linkedin_{key}"
-                        )
-                    with col2:
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        if st.button(f"📋 Copy", key=f"copy_linkedin_{key}"):
-                            st.code(value)
-
-            st.markdown("---")
-
-            # DevelopmentAid searches
-            if "developmentaidSearches" in analysis and platform in ["both", "developmentaid"]:
-                st.header("🌱 DevelopmentAid Search Strings")
-                
-                searches = analysis["developmentaidSearches"]
-                
-                for key, value in searches.items():
-                    col1, col2 = st.columns([4, 1])
-                    with col1:
-                        st.text_area(
-                            f"DevelopmentAid - {key.capitalize()}", 
-                            value, 
-                            height=120,
-                            key=f"devaid_{key}"
-                        )
-                    with col2:
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        if st.button(f"📋 Copy", key=f"copy_devaid_{key}"):
-                            st.code(value)
-
-            # Pro tips section
-            if analysis.get("tips"):
-                st.markdown("---")
-                st.subheader("💡 Pro Tips")
-                for tip in analysis["tips"]:
-                    st.markdown(f"- {tip}")
+    # LinkedIn searches
+    if "linkedinSearches" in analysis and platform in ["both", "linkedin"]:
+        st.header("🔗 LinkedIn Recruiter Search Strings")
+        
+        searches = analysis["linkedinSearches"]
+        
+        for key, value in searches.items():
+            st.subheader(f"LinkedIn - {key.capitalize()}")
             
-            # Export option
+            # Display in expandable code block (easier to copy)
+            with st.expander(f"Click to view and copy", expanded=True):
+                st.code(value, language="text")
+            
+            # Alternative: text area (also copyable)
+            # st.text_area(
+            #     f"Search string:",
+            #     value,
+            #     height=100,
+            #     key=f"linkedin_{key}",
+            #     label_visibility="collapsed"
+            # )
+            
             st.markdown("---")
-            if st.button("💾 Export All Results as JSON"):
-                st.download_button(
-                    label="Download JSON",
-                    data=json.dumps(analysis, indent=2),
-                    file_name="search_strings.json",
-                    mime="application/json"
-                )
+
+    # DevelopmentAid searches
+    if "developmentaidSearches" in analysis and platform in ["both", "developmentaid"]:
+        st.header("🌱 DevelopmentAid Search Strings")
+        
+        searches = analysis["developmentaidSearches"]
+        
+        for key, value in searches.items():
+            st.subheader(f"DevelopmentAid - {key.capitalize()}")
+            
+            # Display in expandable code block
+            with st.expander(f"Click to view and copy", expanded=True):
+                st.code(value, language="text")
+            
+            st.markdown("---")
+
+    # Pro tips section
+    if analysis.get("tips"):
+        st.markdown("---")
+        st.subheader("💡 Pro Tips")
+        for tip in analysis["tips"]:
+            st.markdown(f"- {tip}")
+    
+    # Export option
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Download JSON
+        json_str = json.dumps(analysis, indent=2)
+        st.download_button(
+            label="📥 Download as JSON",
+            data=json_str,
+            file_name="search_strings.json",
+            mime="application/json"
+        )
+    
+    with col2:
+        # Download as text (easier to read)
+        text_output = f"""# Job Search Strings Generated
+
+## Strategy
+{analysis.get('explanation', '')}
+
+## LinkedIn Searches
+
+### Primary Search
+{analysis.get('linkedinSearches', {}).get('primary', '')}
+
+### Importance-Focused Search
+{analysis.get('linkedinSearches', {}).get('importanceFocused', '')}
+
+### Unique-Focused Search
+{analysis.get('linkedinSearches', {}).get('uniqueFocused', '')}
+
+### Fallback Search
+{analysis.get('linkedinSearches', {}).get('fallback', '')}
+
+## DevelopmentAid Searches
+
+### Primary Search
+{analysis.get('developmentaidSearches', {}).get('primary', '')}
+
+### Importance-Focused Search
+{analysis.get('developmentaidSearches', {}).get('importanceFocused', '')}
+
+### Unique-Focused Search
+{analysis.get('developmentaidSearches', {}).get('uniqueFocused', '')}
+
+### Fallback Search
+{analysis.get('developmentaidSearches', {}).get('fallback', '')}
+
+## Pro Tips
+"""
+        for tip in analysis.get('tips', []):
+            text_output += f"- {tip}\n"
+        
+        st.download_button(
+            label="📥 Download as Text",
+            data=text_output,
+            file_name="search_strings.txt",
+            mime="text/plain"
+        )
