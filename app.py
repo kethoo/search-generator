@@ -2,6 +2,7 @@ import streamlit as st
 from openai import OpenAI
 import json
 from file_extractors import extract_text_from_file
+from dotenv import load_dotenv
 
 # ---------- PAGE CONFIG ----------
 st.set_page_config(page_title="Multi-Platform Job Search Generator", layout="wide")
@@ -14,7 +15,22 @@ if 'analysis_results' not in st.session_state:
     st.session_state.analysis_results = None
 
 # ---------- API CONFIG ----------
-api_key = st.text_input("🔑 OpenAI API Key", type="password", placeholder="sk-...")
+load_dotenv()  # Loads from .env if running locally
+api_key = os.getenv("OPENAI_API_KEY", None)
+
+# Fallback: use Streamlit Secrets if available (for Streamlit Cloud)
+if not api_key and "OPENAI_API_KEY" in st.secrets:
+    api_key = st.secrets["OPENAI_API_KEY"]
+
+# Safety check
+if not api_key:
+    st.error("❌ No API key found. Please set OPENAI_API_KEY in Streamlit Secrets or a .env file.")
+else:
+    st.success("🔐 API key loaded securely.")
+
+
+
+
 model = st.selectbox("🧠 Choose Model", ["gpt-4o", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo"])
 
 # ---------- JOB DESCRIPTION INPUT ----------
@@ -371,3 +387,4 @@ if st.session_state.analysis_results:
             file_name="search_strings.txt",
             mime="text/plain"
         )
+
