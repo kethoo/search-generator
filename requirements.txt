@@ -3,3 +3,4 @@ openai
 PyPDF2
 mammoth
 python-docx
+python-dotenv
